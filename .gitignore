@@ -1,4 +1,5 @@
 *.cfg
-TODO
+TODO.txt
 *.pyc
 *.out
+*.json
