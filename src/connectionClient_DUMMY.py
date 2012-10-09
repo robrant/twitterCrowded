@@ -26,64 +26,45 @@ import tweetstream
 import connectionFunctions as cf
 from baseUtils import getConfigParameters
 
-#------------------------------------------------------------------------------------------
-
 def main(p, event, bbox=None, tag=None, people=None, mediaOnly=None):
     ''' Coordinates a new twitter stream connection'''
-
-    cwd = os.getcwd()
-    parent = os.path.dirname(cwd)
-    logFile = os.path.join(parent, 'tweets_id_%s.out' %(event))
-    tFile = open(logFile, 'a')
 
     if tag:
         tag = [tag]
 
     # Build an appropriate bounding box
-    elif bbox:
-        bbox = cf.buildBoundingBox(bbox)
+    bbox = cf.buildBoundingBox(bbox)
     # track=tag, follow=people, 
     
-    tFile.write("Media Only %s" %mediaOnly)
-    
     try:
-        with tweetstream.FilterStream(p.sourceUser, p.sourcePassword, track=tag, locations=bbox) as stream:
+        with tweetstream.FilterStream(p.sourceUser, p.sourcePassword, locations=bbox) as stream:
             for tweet in stream:
                 
-                tFile.write("*"*80+"\n")
-                txt = "1. %s  :  %s \n" %(tweet['created_at'], tweet['text'])
-                tFile.write(json.dumps(txt, ensure_ascii=True))
-                try:
-                    txt = "2. %s  \n" %(tweet['entities'])
-                    tFile.write(json.dumps(txt, ensure_ascii=True))
-                except:
-                    continue
-
                 # If we're only after those with media in
                 if mediaOnly:
-                    try:
-                        entities = tweet['entities']
-                    except:
-                        continue
-                    # If the tweet contains media
-                    if entities.has_key('media') == True:
-                        mediaOut = cf.processMedia(event, tweet)
-
-                        # Dump the tweet to a string for the jms
-                        try:
-                            tweet = json.dumps(mediaOut, ensure_ascii=True)
-                            #tFile.write("4. Media Event Making it Through"+"\n")
-                        except Exception, e:
-                            continue
+                    entities = tweet['entities']
                     
-                        try:
-                            success = cf.postTweet(p, tweet)
-                            tFile.write("5. Media Event Being Posted: %s\n" %success)
-                        except Exception, e:
-                            tFile.write("5. Media Failed POST\n")
+                    # If the tweet contains media
+                    if entities.has_key('media'):
+                        mediaOut = cf.processMedia(tweet)
+                        mediaOut['objectId'] = event
                     else:
                         continue
-                    
+                
+                # Dump the tweet to a string for the jms
+                try:
+                    tweet = json.dumps(mediaOut, ensure_ascii=True)
+                except Exception, e:
+                    print 'FAILED to dump out'
+                    print e
+                    continue
+            
+                try:
+                    success = cf.postTweet(tweet)
+                except Exception, e:
+                    print e
+                    print success
+            
     except tweetstream.ConnectionError, e:
         print "Disconnected from twitter. Reason:\n", e.reason
     
@@ -115,19 +96,19 @@ if __name__ == '__main__':
     if not opts.n and not opts.s and not opts.e and not opts.w and not opts.tag:
         print "Must provide either tag or -n & s & e & w \n"
         parser.print_help()
-        exit(-1)
-    elif opts.n and opts.s and opts.e and opts.w:
+        exit(-1)    
+    else:
         bbox = {'n':opts.n,'s':opts.s,'e':opts.e,'w':opts.w}
-        tag = None
-    elif opts.tag:
-        tag = opts.tag
-        bbox = None
 
     #Config File Parameters
     logging.basicConfig()
     p = getConfigParameters(opts.config)
-        
-    main(p, event=opts.eventId, tag=tag, bbox=bbox, mediaOnly=opts.media)
+    
+    x = True
+    while x == True:
+        pass
+    
+    #main(p, event=opts.eventId, tag=opts.tag, bbox=bbox, mediaOnly=opts.media)
 
 """
 {"data":[{"standard_resolution" : "http://distilleryimage1.s3.amazonaws.com/8b74d2ee0e5611e2adc122000a1de653_7.jpg",

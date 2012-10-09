@@ -1,0 +1,4 @@
+worker:
+  type: python-worker
+data:
+  type: mongodb

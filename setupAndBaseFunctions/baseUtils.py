@@ -2,11 +2,23 @@ import os
 import mdb
 import ConfigParser
 import json
+import subprocess
 
 # Get the directory in which this was executed (current working dir)
 cwd = os.getcwd()
 wsDir = os.path.dirname(cwd)
 
+#----------------------------------------------------------------------------------------
+
+def getPython():
+    ''' Gets the currently installed python for this machine. '''
+    
+    process = subprocess.Popen(['which', 'python'], shell=False, stdout=subprocess.PIPE)
+    response = process.communicate()
+    python = response[0].rstrip('\n')
+    return python
+
+#----------------------------------------------------------------------------------------
 
 class getConfigParameters():
     ''' Gets the configuration parameters into an object '''
@@ -38,13 +50,15 @@ class getConfigParameters():
         self.eventsCollection   = self.collections[0]['collection']
 
         # Parameters for the instagram API
-        self.client = config.get("source", "user")
-        self.secret = config.get("source", "password")
-        self.warning = config.get("source", "stall_warning")
+        self.sourceUser     = config.get("source", "user")
+        self.sourcePassword = config.get("source", "password")
+        self.warning        = config.get("source", "warning")
         
         # URLs that get used
         self.helpUrl        = config.get("web", "helpUrl")
         self.webStaticRoute = config.get("web", "webStaticRoute")
+        self.POSTurl        = config.get("web", "target")
+        self.crowdedEventsUrl = config.get("web", "eventList")
         
         # Error Logging
         self.verbose   = config.getboolean("error", "verbose")
@@ -53,6 +67,7 @@ class getConfigParameters():
         self.errorPath = os.path.join(wsDir, errorPath)
         self.errorFile = config.get("error", "err_file")
 
+        self.python = getPython() 
 
         
 #----------------------------------------------------------------------------------------
@@ -92,7 +107,7 @@ def handleErrors(p, error):
 #----------------------------------------------------------------------------------------
 
 def decodeEncode(token, encoding='latin-1'):
-    ''' Holds it all together '''
+    ''' Decoding and encoding the sting '''
     
     token = token.decode(encoding)
     token = token.encode('utf8')

@@ -28,39 +28,40 @@ def buildIndexes(p, collection, collHandle):
     ''' Build the indexes specified'''
    
     # Create indexes
-    try:    
-        if p.verbose==True:
-            print "---- Create Plain Indexes."
-        
-        for index in collection['plain']:
-            collHandle.create_index([(index, ASCENDING)])
+    try:  
+        if collection.has_key('plain'):
             if p.verbose==True:
-                print "---- Index Created On: %s." %index
+                print "---- Create Plain Indexes."
+            
+            for index in collection['plain']:
+                collHandle.create_index([(index, ASCENDING)])
+                if p.verbose==True:
+                    print "---- Index Created On: %s." %index
 
     except Exception, e:
         handleErrors(p, e)
 
     # Create compound indexes
     try:
-        if p.verbose==True:
-            print "---- Create Compound Indexes."
-    
-        for index in collection['compound']:
-            ## ********* NEED SOME CONTENT IN HERE **********
+        if collection.has_key('compound'):
             if p.verbose==True:
-                print "---- Index Created On: %s." %index
+                print "---- Create Compound Indexes."
+                for index in collection['compound']:
+                    ## ********* NEED SOME CONTENT IN HERE **********
+                    if p.verbose==True:
+                        print "---- Index Created On: %s." %index
 
     except Exception, e:
         handleErrors(p, e)
 
     # Create compound indexes
     try:
-        if p.verbose==True:
-            print "---- Create Geo Indexes."
-    
-        collHandle.create_index([(collection['geo'], GEO2D)])
-        if p.verbose==True:
-            print "---- Index Created On: %s." %index
+        if collection.has_key('geo'):
+            if p.verbose==True:
+                print "---- Create Geo Indexes."
+            collHandle.create_index([(collection['geo'], GEO2D)])
+            if p.verbose==True:
+                print "---- Index Created On: %s." %index
 
     except Exception, e:
         handleErrors(p, e)
@@ -106,4 +107,12 @@ def main(configFile=None):
     mdb.close(c, dbh)
     
 if __name__ == "__main__":
-    main()
+    
+    configFile = sys.argv[1]
+    
+    # first argument is the config file path
+    if not configFile:
+        print 'no Config file provided. Exiting.'
+        sys.exit()
+    
+    main(configFile)
