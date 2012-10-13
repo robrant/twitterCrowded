@@ -1,7 +1,31 @@
-- FIND NEW EVENT
+* MAJOR ISSUE:
+  - The twitter connection client only handles 1 connection from a single machine because (I think) of the 
+    port being used. So, if multiple events are running in crowded, only the latest created one will be
+    accepting tweets. The other background commandline job will have been terminated.
+    
+    The only (?) way around this is to terminate the current tweet stream, modify it to include the new
+    event (be that geo OR tag) and then continue.
+    
+    When the tweet comes through the stream though, it needs to be tied to an event, so that it can go into
+    the right event:document. This is how to do that:
+    
+    1. Check the tag - is the tag in the hashtags[]? Make a DISTINCT call to the db on starting the connectionClient
+       Return a list of tags and do a lookup against the hashtags for this tweet. If it's in there, add that as an objectId.
+       Adding the objectId gets over the issue of having images that match 2 events - they would simply get added to both.
 
-- ON NEW EVENT:
-	
-	DROP THE CURRENT CONNECTION TO TWITTER
-	ADD IN THE NEW PARAMETERS
-	WHEN THE POST COMES THROUGH - NEED TO GET THE OBJECT ID FROM THE TWEET ITSELF.
+    2. Loop the geo event:documents, and get back the BBox --> into N, E, S, W
+       If has coordinates, check lat is between the Lat range. Lon is between the lon range. If so, add the objectId.
+
+	So, when the CRON job checks for new/old.
+	If it finds a new:
+		1. Kills the old and adds in the new condition
+	If it finds an old:
+		1. Kills the old connection Client and drops the old entry from it.
+		
+	PROBABLY WANT TO GO TO THE ALTERNATIVE WAY OF CALLING IT.
+	PROBABLY WANT TO WORK OUT HOW TO PUT IN MULTIPLE ENTRIES.
+		
+
+* MINOR ISSUES:
+  - as an argument to the command line call call, add in a URL for the POST callback. Manage could take this from the config file.
+  - 

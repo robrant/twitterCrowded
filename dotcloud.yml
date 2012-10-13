@@ -2,3 +2,5 @@ worker:
   type: python-worker
 data:
   type: mongodb
+stage:
+  type: redis

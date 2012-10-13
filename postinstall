@@ -1,5 +1,10 @@
 #!/bin/sh
 /opt/ve/2.6/bin/python /home/dotcloud/code/setupAndBaseFunctions/setupApp.py /home/dotcloud/code/config/twitterCrowded.cfg dotcloud >> /home/dotcloud/code/errorOutput/setupAppErrors.log 2>&1
 
+chmod 777 /home/dotcloud/code/errorOutput
+
 crontab /home/dotcloud/code/config/_postinstall_crontab_file
 
+# Kick off the redis listener
+#/opt/ve/2.6/bin/python /home/dotcloud/code/src/consumeProcessTweets.py /home/dotcloud/code/config/twitterCrowded.cfg >> /home/dotcloud/code/errorOutput/consumeProcessTweets.log 2>&1 &
+# This is now done inside setupApp.py

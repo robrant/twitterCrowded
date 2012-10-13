@@ -73,6 +73,9 @@ def getMedia(mediaDoc):
 def buildBoundingBox(cardinals):
     ''' Builds the bounding box for the twitter format.'''
 
+    # THIS FROM AN EXISTING OBJECT
+    #"bbox" : [     [     -0.15086429372878282,     51.50475570627122 ],     [     -0.10658170627121719,     51.54903829372878 ] ]
+
     sw = "%s,%s" %(cardinals['w'],cardinals['s'])
     ne = "%s,%s" %(cardinals['e'],cardinals['n'])
     bbox = [sw, ne]
@@ -136,3 +139,111 @@ def postTweet(p, mediaTweet):
         return errors
     else:
         return response
+
+#------------------------------------------------------------------------------------------ 
+
+def getCurrentTags(evCollHandle, currentTag=None):
+    ''' Gets the current tags in the mongodb. These are used to rebuild the tweetstream
+        to reflect all of the current tag requirements'''
+    
+    results = []
+    query = {"subType":"tag"}
+    fields = ["objectId"]
+    res = evCollHandle.find(query, fields)
+    if res:
+        results = [r['objectId'] for r in res]
+    
+    if currentTag:
+        results.append(currentTag)
+    if len(results) == 0:
+        results = None
+    
+    return results
+
+#------------------------------------------------------------------------------------------ 
+
+def formatBBoxForTweetStream(bbox):
+    ''' Formats the bbox coords for the tweet stream'''
+    
+    bboxFmt = []
+    for coordPair in bbox:
+        bboxFmt.append("%s,%s" %(coordPair[0],coordPair[1]))
+     
+    return bboxFmt
+
+#------------------------------------------------------------------------------------------ 
+
+def getCurrentBBoxes(evCollHandle):
+    ''' Gets all of the current bboxes into a correctly formatted list for tweetstream.'''
+    
+    results = []
+    query = {'subType':'geography'}
+    fields = ['bbox']
+    res = evCollHandle.find(query, fields)
+    if res:
+        for r in res:
+            coords = formatBBoxForTweetStream(r)
+            results += coords
+    
+    if len(results) == 0:
+        results = None
+    
+    return results
+
+#------------------------------------------------------------------------------------------ 
+
+def getQueryBBox(evCollHandle, pad=0.001):
+    ''' Build a map of objectId-to-geos'''
+    
+    results = {}
+    query = {'subType':'geography'}
+    fields = ['bbox', 'objectId']
+    res = evCollHandle.find(query, fields)
+    if res:
+        for r in res:
+            results[str(r['objectId'])] ={'n':r['bbox'][1][1] + pad,
+                                          's':r['bbox'][0][1] - pad,
+                                          'e':r['bbox'][1][0] + pad,
+                                          'w':r['bbox'][0][0] - pad}
+    if results == {}:
+        results = None
+    
+    return results
+
+#------------------------------------------------------------------------------------------ 
+
+def whichTags(currentTags, tweet):
+    ''' Determine which current tags this tweet matches '''
+    
+    results = []
+    if tweet.has_key('entities') == True:
+        for tag in tweet['entities']['hashtags']:
+            thisTag = tag['text']
+            if thisTag in currentTags:
+                results.append(thisTag)
+    
+    return results
+
+#------------------------------------------------------------------------------------------ 
+
+def matchesCurrentGeos(queryBBoxes, tweet):
+    ''' Matches which geospatial bbox this tweet lies in and assigns the right objectId'''
+    
+    results = []
+    
+    try:
+        coords = tweet['coordinates']['coordinates']
+        lon, lat = coords
+    except KeyError:
+        return None
+    
+    # Loop the current query boxes:
+    for bbox in queryBBoxes.keys():
+        if lat < queryBBoxes[bbox]['n'] and lat > queryBBoxes[bbox]['s']:
+            if lon < queryBBoxes[bbox]['e'] and lon > queryBBoxes[bbox]['w']:
+                results.append(bbox)
+    
+    return results
+
+
+

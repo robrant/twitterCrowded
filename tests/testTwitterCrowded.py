@@ -99,7 +99,7 @@ class Test(unittest.TestCase):
         
         self.assertEquals(mediaOut['data'][0]['caption'], 'Ah, lovely stuff - cocktails with @grainy47 http://t.co/lw4JSCHJ')
         self.assertEquals(mediaOut['data'][0]['dt'], '2012-10-06T19:38:44')
-    """
+    
         
     def testpostTweet(self):
         '''Tweet post test'''
@@ -134,7 +134,64 @@ class Test(unittest.TestCase):
         self.assertEquals(outData, data['data'][0])
         
         process = subprocess.Popen(['kill', '-9', str(pid)], shell=False, stdout=subprocess.PIPE)
+    """
+    def testGetCurrentTags(self):
         
+        import mdb
+        cwd = os.getcwd()
+        parent = os.path.dirname(cwd)
+        cfgs = os.path.join(parent, 'config/twitterCrowded.cfg')
+        p = getConfigParameters(cfgs)
+
+        # The mongo bits
+        try:
+            c, dbh = mdb.getHandle(host=p.dbHost, port=p.dbPort, db=p.db, user=p.dbUser, password=p.dbPassword)
+            evCollHandle = dbh[p.eventsCollection]    
+        except:
+            print "Failed to connect to mongo."
+            sys.exit(1)
+
+        res = cf.getCurrentTags(evCollHandle, 'shitbrick')
+        self.assertEquals(res, ['hellworld','fuckhole', 'shitbrick'])
+
+        # Quick test chucked in
+        results = cf.getQueryBBox(evCollHandle)
+        print results
+
+    def testFormatBBoxForTweetStream(self):
+        
+        bbox = [ [ -0.15086429372878282, 51.50475570627122 ], [ -0.10658170627121719, 51.54903829372878 ] ]
+        truth = ['-0.150864293729,51.5047557063', '-0.106581706271,51.5490382937']
+        bboxFormatted = cf.formatBBoxForTweetStream(bbox)
+        self.assertEquals(truth, bboxFormatted)
+
+
+    def testWhichTag(self):
+        
+        currentTags = ['xfactor']
+        f = open(os.path.join(os.getcwd(), 'sampleTweet.json'), 'r')
+        tweet = json.loads(f.read())
+        tags = cf.whichTags(currentTags, tweet)
+        self.assertEquals(currentTags, tags)
+
+
+    def testMatchesCurrentGeos(self):
+        
+        f = open(os.path.join(os.getcwd(), 'sampleTweet.json'), 'r')
+        tweet = json.loads(f.read())
+        [-0.13546585999999999, 51.510528880000003]
+        queryBBoxes = {'hits':    {'s': 51.504755706271219,
+                                   'e': -0.10658170627121719,
+                                   'w': -0.15086429372878282,
+                                   'n': 51.549038293728778},
+                       
+                       'miss':    {'s': 51.544755706271219,
+                                   'e': -0.14658170627121719,
+                                   'w': -0.17086429372878282,
+                                   'n': 51.589038293728778}}
+        
+        bboxIds = cf.matchesCurrentGeos(queryBBoxes, tweet)
+        self.assertEquals(bboxIds, ['hits'])
         
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testGetTopTags']

@@ -16,6 +16,39 @@ class params():
 
 #------------------------------------------------------------------------------------
 
+class redisParams():
+    
+    def __init__(self, port, host, adminPass):
+         
+        self.port     = int(port)
+        self.host     = host
+        self.password = adminPass
+
+#------------------------------------------------------------------------------------
+
+def writeConfigFileRedis(configFile, redisParams):
+    ''' Writes in the new host and port information for the mongo instance.'''
+
+    fIn = open(configFile, 'r')
+    tmpFileName = os.path.join(os.path.dirname(configFile),'tmp.tmp')
+    fOut = open(tmpFileName, 'w')
+    
+    for line in fIn:
+        if line.startswith('redisPort'):
+            fOut.write('redisPort = %s \n' %redisParams.port)
+        elif line.startswith('redisHost'):
+            fOut.write('redisHost = %s \n' %redisParams.host)
+        elif line.startswith('redisPassword'):
+            fOut.write('redisPassword = %s \n' %redisParams.password)
+        else:
+            fOut.write(line)
+    fOut.close()
+    fIn.close()
+    
+    os.rename(tmpFileName, configFile)
+        
+#------------------------------------------------------------------------------------
+
 def writeConfigFile(configFile, dotcloudParams):
     ''' Writes in the new host and port information for the mongo instance.'''
 
@@ -50,8 +83,26 @@ def getEnvironment(path='/home/dotcloud/', file='environment.json'):
     host = data['DOTCLOUD_DATA_MONGODB_HOST']
     adminUser = data['DOTCLOUD_DATA_MONGODB_LOGIN']
     adminPass = data['DOTCLOUD_DATA_MONGODB_PASSWORD']
-    
+
     p = params(port, host, adminUser, adminPass)
+
+    return p
+
+#------------------------------------------------------------------------------------
+
+def getRedisEnvironment(path='/home/dotcloud/', file='environment.json'):
+    ''' Get the environment for redis db info.'''
+    
+    # Open the environment.json
+    f = open(os.path.join(path, file), 'r')
+    data = json.loads(f.read())
+    f.close()
+    
+    redisPort     = data['DOTCLOUD_STAGE_REDIS_PORT']
+    redisPassword = data['DOTCLOUD_STAGE_REDIS_PASSWORD']
+    redisHost     = data['DOTCLOUD_STAGE_REDIS_HOST']
+
+    p = redisParams(redisPort, redisHost, redisPassword)
 
     return p
 
@@ -63,6 +114,7 @@ def main(configFile=None):
     
     # Get the parameters that were set up by dotcloud
     dcParams = getEnvironment()
+    reParams = getRedisEnvironment()
     
     # Authenticate on the admin db
     c, dbh = mdb.getHandle(host=dcParams.mongoHost, port=dcParams.mongoPort, db='admin')
@@ -92,6 +144,7 @@ def main(configFile=None):
     
     # Write out the new information to the regular config file
     writeConfigFile(configFile, dcParams)
+    writeConfigFileRedis(configFile, reParams)
     
     mdb.close(c, dbh)
     

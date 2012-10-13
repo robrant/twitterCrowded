@@ -1,5 +1,7 @@
 import os
 import sys
+import subprocess
+
 #============================================================================================
 # TO ENSURE ALL OF THE FILES CAN SEE ONE ANOTHER.
 # Get the directory in which this was executed (current working dir)
@@ -35,3 +37,8 @@ elif site == 'local':
 print '----> Setting up and populating database'
 setupDatabase.main(configFile)
 
+# Setup the redis listener
+commands = ['/opt/ve/2.6/bin/python','/home/dotcloud/code/src/consumeProcessTweets.py' '/home/dotcloud/code/config/twitterCrowded.cfg']
+commands+= ['>>', '/home/dotcloud/code/errorOutput/consumeProcessTweets.log','2>&1',' &']
+process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
+    

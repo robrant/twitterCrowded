@@ -59,11 +59,12 @@ def getCrowdedEvents(p, ef):
         req = urllib2.Request(p.crowdedEventsUrl)
         response = urllib2.urlopen(req).read()
     except Exception, e:
-        ef.write("Failed to open Crowded events list url")
+        ef.write("Failed to retrieve Crowded events list from url")
     
     try:
         events = json.loads(response)
     except:
+        ef.write("Failed to get contents into json")
         events = None
         
     if events.has_key('data'):
@@ -77,13 +78,14 @@ def getLocalEvents(p, evCollHandle):
     
     # The query into mongo that should only return 1 doc
     res = evCollHandle.find()
-    
-    try:
-        docs = [d for d in res]
-    except:
-        print "No active events in this app."
+    if res:
+        try:
+            docs = [d for d in res]
+        except:
+            docs = None
+    else:
         docs = None
-
+        
     return docs
     
 #----------------------------------------------------------------------
@@ -93,14 +95,19 @@ def checkEvents(crowded, local):
     
     # Format the crowded events into list of objectIds - inEvents
     crowdedEvents = {}
-    for ev in crowded:
-        crowdedEvents[ev['objectId']] = ev 
-    
+    try:
+        for ev in crowded:
+            crowdedEvents[ev['objectId']] = ev 
+    except:
+        pass
     # Format my events into list of objectIds - inEvents
     localEvents = {}
-    for ev in local:
-        localEvents[ev['objectId']] = ev 
-    
+    try:
+        for ev in local:
+            localEvents[ev['objectId']] = ev 
+    except:
+        pass    
+
     # Get newEvents
     oldEventIds = list(set(localEvents.keys()) - set(crowdedEvents.keys()))
     oldEvents = [localEvents[oe] for oe in oldEventIds]
@@ -123,22 +130,35 @@ def formatBBox(bbox):
     w = bbox[0][0]
     
     return n, s, e, w
+
+#----------------------------------------------------------------------
+    
+def killOldProcess(pid):
+    ''' Kill off the old process'''
+
+    # Build the command and arguments    
+    command = ['kill', '-9', str(pid)]
+    # Make a call to POpen passing in the filter param
+    process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
+    
+    return
     
 #----------------------------------------------------------------------
 
-def processNewEvent(p, newEvent):
+def processNewEvent(p):
     ''' Establishes a new stream for this event. '''
     
     # Build the command and arguments    
-    command = [p.python, p.streamClient, '-c', p.configFile, '-m', '-o', str(newEvent['objectId'])]
+    command = [p.python, p.streamClient, '-c', p.configFile, '-m']
     
+    """
     # Extract geo or tag info from the newEvent
     if newEvent['subType'] == 'tag':
         command += ["-t", str(newEvent['objectId'])]
         
     elif newEvent['subType'] == 'geography':
-        n,s,e,w = formatBBox(newEvent["bbox"])
-        command += ['-n',str(n),'-s',str(s),'-e',str(e),'-w',str(w)]
+        command += '-g'
+    """
     
     # Make a call to POpen passing in the filter param
     process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
@@ -148,17 +168,73 @@ def processNewEvent(p, newEvent):
         
 #----------------------------------------------------------------------
 
-def createLocalEvent(evCollHandle, event, processId):
-    ''' Updates the mongo document with server process Id for later kill. '''
+def createLocalEvent(evCollHandle, event):
+    ''' Initial insert of the document '''
     
-    # Add the process id to the existing document
-    event['pid'] = processId
     try:
         res = evCollHandle.insert(event)
     except:
         res = "Failed to insert the event:\n%s" %event
 
     return res
+#----------------------------------------------------------------------
+
+def getPid(mgmtCollHandle):
+    ''' Gets the PID from the mongo management collection. '''
+
+    # Add the process id to the existing document
+    query = {'function':'twitterClientPid'}
+    fields = ['pid']
+    try:
+        doc = mgmtCollHandle.find_one(query, fields)
+        pid = doc['pid']
+        
+    except:
+        print "Failed to UPDATE the PID for twitter Client"
+        pid = None
+        
+    return pid
+
+#----------------------------------------------------------------------
+
+def setInitialPid(mgmtCollHandle):
+    ''' Set the initial PID'''
+    
+    print "In Setinitial"
+    # Add the process id to the existing document
+    query = {'function':'twitterClientPid'}
+    try:
+        res = mgmtCollHandle.find_one(query)
+        print res
+    except:
+        print "Failed to UPDATE the PID for twitter Client"
+        res = None
+    
+    if not res or len(res) == 0:
+        query['pid'] = None
+        insRes = mgmtCollHandle.insert(query)
+    else:
+        insRes = None
+        
+    return insRes    
+
+#----------------------------------------------------------------------
+
+def storePid(mgmtCollHandle, processId):
+    ''' Updates the mongo document with server process Id for later kill. '''
+
+    # Add the process id to the existing document
+    query = {'function':'twitterClientPid'}
+    update = {'$set':{'pid':processId}}
+    try:
+        res = mgmtCollHandle.update(query, update, upsert=True)
+        print "Successfully changed to the new PID."
+    except:
+        print "Failed to UPDATE the PID for twitter Client"
+        res = None
+        
+    return res
+
 
 #----------------------------------------------------------------------
 
@@ -168,9 +244,23 @@ def expireOldEvent(evCollHandle, oldEvent):
     # Uses the document id to get the server process ID
     filter = {'objectId': oldEvent['objectId']}
     
+    # Remove the document from mongo
+    try:
+        evCollHandle.remove(filter)
+        res = None 
+    except Exception, e:
+        print 'Exception: %s' %e
+        res = "Failed to remove the old object, id: %s" %oldEvent['objectId']
+        
+    return res
+
+#----------------------------------------------------------------------
+
+def killCurrentProcess(mgmtCollHandle, pid):
+
     # Use the document id to get the PID for the connectionClient for this stream
     try:
-        res = evCollHandle.find_one(filter, fields=['pid'])
+        res = mgmtCollHandle.find_one(filter, fields=['pid'])
         pid = res['pid']
     except:
         pid = None
@@ -179,20 +269,8 @@ def expireOldEvent(evCollHandle, oldEvent):
     if pid:
         process = subprocess.Popen(['kill', '-9', str(pid)], shell=False, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         removePidOut = process.communicate()
-        
-        # Remove the document from mongo
-        try:
-            evCollHandle.remove(filter)
-            res = None 
-        except Exception, e:
-            print 'Exception: %s' %e
-            res = "Failed to remove the old object, id: %s" %oldEvent['objectId']
-    else:
-        res = "Failed to get server PID for the old event:\n%s" %oldEvent
-        
-    return res
 
-#----------------------------------------------------------------------
+#---------------------------------------------------------------------- 
 
 def main(configFile=None):
     ''' Coordinates the management functions
@@ -212,35 +290,47 @@ def main(configFile=None):
     # The mongo bits
     try:
         c, dbh = mdb.getHandle(host=p.dbHost, port=p.dbPort, db=p.db, user=p.dbUser, password=p.dbPassword)
-        evCollHandle = dbh[p.eventsCollection]    
+        evCollHandle = dbh[p.eventsCollection]  
+        mgmtCollHandle = dbh[p.mgmtCollection]  
     except:
-        ef.write("Failed to get mongo connection and Event Collection Handle.")
+        ef.write("Failed to get mongo connection and Event Collection Handle.\n")
         sys.exit(1)
         
+    # Create a new management document if needed
+    initialOID = setInitialPid(mgmtCollHandle)
+    print initialOID
+    
     # Get the current events from crowded
     crowdedEvents = getCrowdedEvents(p, ef)
-    if not crowdedEvents:
-        ef.write("Failed to get events list from crowded.")
         
     # Get the events currently stored by this app
     myEvents = getLocalEvents(p, evCollHandle)
-    if not myEvents:
-        ef.write("Failed to get events list from crowded.")
 
     # Compare the 2 sets of events: what's old and new?
     oldEvents, newEvents = checkEvents(crowdedEvents, myEvents)
-
-    # Create new ones + setup conectionclient
-    for newEvent in newEvents:
-        pid = processNewEvent(p, newEvent)
-        res = createLocalEvent(evCollHandle, newEvent, pid)
-        if res: ef.write("Creating Local Event:\n%s" %res)
-        
-    # Expire old events from db + kill the connectionClient pid  
+    
+    # Expire old events from db, so that the new stream reflects the correct interest  
     for oldEvent in oldEvents:
         res = expireOldEvent(evCollHandle, oldEvent)
-        if res: ef.write("Creating Local Event: %s" %res)
-
+        
+    # Create new item in the db
+    for newEvent in newEvents:
+        res = createLocalEvent(evCollHandle, newEvent)
+    
+    # Get the old process ID and kill it off
+    pid = getPid(mgmtCollHandle)
+    print 'Current PID: %s' %pid
+    if pid:
+        "Killing old processID"
+        res = killOldProcess(pid)
+    
+    # Now create the new one
+    newPid = processNewEvent(p)
+    print "New PID: %s" %newPid
+    
+    # Update the current process id in mongo
+    res = storePid(mgmtCollHandle, newPid)
+        
     mdb.close(c, dbh)
     ef.close()
     

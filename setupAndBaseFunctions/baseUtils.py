@@ -45,9 +45,16 @@ class getConfigParameters():
         self.dbPassword  = config.get("backend", "password")
         self.dropCollection = config.getboolean("backend", "drop_collection")
         
+        # Redis tweet staging 
+        self.redisHost = config.get("stage", "redisHost")
+        self.redisPort = config.getint("stage", "redisPort")
+        self.redisPassword = config.get("stage", "redisPassword")
+        self.redisName = config.get("stage", "redisName")
+        
         # Collections and indexes
-        self.collections        = json.loads(config.get("backend", "collections"))
-        self.eventsCollection   = self.collections[0]['collection']
+        self.collections      = json.loads(config.get("backend", "collections"))
+        self.eventsCollection = self.collections[0]['collection']
+        self.mgmtCollection   = self.collections[1]['collection']
 
         # Parameters for the instagram API
         self.sourceUser     = config.get("source", "user")
