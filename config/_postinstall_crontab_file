@@ -1,2 +1,6 @@
-# Cron to call the event checker
-*/5 * * * * /opt/ve/2.6/bin/python /home/dotcloud/code/src/manageEvents.py /home/dotcloud/code/config/twitterCrowded.cfg >> /home/dotcloud/code/errorOutput/manageEventsCron.log 2>&1
+*/5 * * * * /opt/ve/2.6/bin/python /home/dotcloud/code/src/manageEvents.py /home/dotcloud/code/config/twitterCrowded.cfg >> /home/dotcloud/code/logs/manageEventsCron.log 2>&1
+
+
+#*/2 * * * * echo "helloworld" >> /home/dotcloud/code/logs/helloworld.log 2>&1
+
+

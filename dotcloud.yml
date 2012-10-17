@@ -1,6 +1,6 @@
-worker:
-  type: python-worker
-data:
-  type: mongodb
 stage:
   type: redis
+data:
+  type: mongodb
+pythonworker:
+  type: python-worker

@@ -31,6 +31,7 @@ import urllib2
 import json
 import subprocess
 import time
+import logging
 #============================================================================================
 # TO ENSURE ALL OF THE FILES CAN SEE ONE ANOTHER.
 
@@ -52,23 +53,27 @@ import mdb
 from baseUtils import getConfigParameters
 
 
-def getCrowdedEvents(p, ef):
+def getCrowdedEvents(p):
     ''' Retrieves the currently active events in crowded '''
     
     try:
+        print p.crowdedEventsUrl
         req = urllib2.Request(p.crowdedEventsUrl)
         response = urllib2.urlopen(req).read()
-    except Exception, e:
-        ef.write("Failed to retrieve Crowded events list from url")
+    except:
+        response = None
+        logging.error("Failed to retrieve Crowded events list from url: %s" %(p.crowdedEventsUrl), exc_info=True)
+
     
     try:
         events = json.loads(response)
     except:
-        ef.write("Failed to get contents into json")
+        logging.error("Failed to load events", exc_info=True)
         events = None
         
     if events.has_key('data'):
         events = events['data']
+        
     return events
 
 #----------------------------------------------------------------------
@@ -82,6 +87,7 @@ def getLocalEvents(p, evCollHandle):
         try:
             docs = [d for d in res]
         except:
+            logging.warning("Failed to get local events.", exc_info=True)
             docs = None
     else:
         docs = None
@@ -141,7 +147,7 @@ def killOldProcess(pid):
     # Make a call to POpen passing in the filter param
     process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
     
-    return
+    return process.pid
     
 #----------------------------------------------------------------------
 
@@ -149,16 +155,7 @@ def processNewEvent(p):
     ''' Establishes a new stream for this event. '''
     
     # Build the command and arguments    
-    command = [p.python, p.streamClient, '-c', p.configFile, '-m']
-    
-    """
-    # Extract geo or tag info from the newEvent
-    if newEvent['subType'] == 'tag':
-        command += ["-t", str(newEvent['objectId'])]
-        
-    elif newEvent['subType'] == 'geography':
-        command += '-g'
-    """
+    command = [p.python, p.streamClient, '-c', p.configFile, '-m', '&']
     
     # Make a call to POpen passing in the filter param
     process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE)
@@ -174,7 +171,8 @@ def createLocalEvent(evCollHandle, event):
     try:
         res = evCollHandle.insert(event)
     except:
-        res = "Failed to insert the event:\n%s" %event
+        logging.warning("Failed to insert the event:\n%s" %event, exc_info=True)
+        res = None 
 
     return res
 #----------------------------------------------------------------------
@@ -190,7 +188,7 @@ def getPid(mgmtCollHandle):
         pid = doc['pid']
         
     except:
-        print "Failed to UPDATE the PID for twitter Client"
+        logging.warning("Failed to UPDATE the PID for twitter Client", exc_info=True)
         pid = None
         
     return pid
@@ -200,19 +198,20 @@ def getPid(mgmtCollHandle):
 def setInitialPid(mgmtCollHandle):
     ''' Set the initial PID'''
     
-    print "In Setinitial"
+    logging.debug('Setting the initial PID')
+
     # Add the process id to the existing document
     query = {'function':'twitterClientPid'}
     try:
         res = mgmtCollHandle.find_one(query)
-        print res
     except:
-        print "Failed to UPDATE the PID for twitter Client"
         res = None
     
     if not res or len(res) == 0:
         query['pid'] = None
         insRes = mgmtCollHandle.insert(query)
+        logging.debug('Creating a placeholder PID document.')
+
     else:
         insRes = None
         
@@ -228,9 +227,10 @@ def storePid(mgmtCollHandle, processId):
     update = {'$set':{'pid':processId}}
     try:
         res = mgmtCollHandle.update(query, update, upsert=True)
-        print "Successfully changed to the new PID."
+        logging.debug('Successfully updated the PID in mgmt collection.')
+        res = processId
     except:
-        print "Failed to UPDATE the PID for twitter Client"
+        logging.warning('Failed to update the PID in mgmt collection', exc_info=True)
         res = None
         
     return res
@@ -248,9 +248,8 @@ def expireOldEvent(evCollHandle, oldEvent):
     try:
         evCollHandle.remove(filter)
         res = None 
-    except Exception, e:
-        print 'Exception: %s' %e
-        res = "Failed to remove the old object, id: %s" %oldEvent['objectId']
+    except:
+        logging.warning("Failed to remove the old object, id: %s" %oldEvent['objectId'])
         
     return res
 
@@ -263,6 +262,7 @@ def killCurrentProcess(mgmtCollHandle, pid):
         res = mgmtCollHandle.find_one(filter, fields=['pid'])
         pid = res['pid']
     except:
+        logging.warning("Failed to get the current PID from mgmt collection.", exc_info=True)
         pid = None
         
     # Uses the process ID to kill the process
@@ -277,31 +277,31 @@ def main(configFile=None):
         Command line called, typically from a CRON.'''
 
     # Get the config file
-    cwd = os.getcwd()
-    parent = os.path.dirname(cwd)
     p = getConfigParameters(configFile)
     
-    errorFile = os.path.join(p.errorPath, p.errorFile)
-    ef = open(errorFile, 'a')
-    
+    # Logging config
+    logFile = os.path.join(p.errorPath, p.errorFile)
+    logging.basicConfig(filename=logFile, format='%(levelname)s:: \t%(asctime)s %(message)s', level=p.logLevel)
+
     # Streaming client
-    p.streamClient = os.path.join(parent, 'src/connectionClient.py')
+    connClientPath = os.path.dirname(p.errorPath)
+    p.streamClient = os.path.join(connClientPath, 'src/connectionClient.py')
 
     # The mongo bits
     try:
         c, dbh = mdb.getHandle(host=p.dbHost, port=p.dbPort, db=p.db, user=p.dbUser, password=p.dbPassword)
         evCollHandle = dbh[p.eventsCollection]  
-        mgmtCollHandle = dbh[p.mgmtCollection]  
+        mgmtCollHandle = dbh[p.mgmtCollection]
+        logging.debug("Connected and authenticated on the db.")
     except:
-        ef.write("Failed to get mongo connection and Event Collection Handle.\n")
-        sys.exit(1)
-        
+        logging.critical('Failed to connect to db and authenticate.', exc_info=True)
+        sys.exit()
+            
     # Create a new management document if needed
     initialOID = setInitialPid(mgmtCollHandle)
-    print initialOID
     
     # Get the current events from crowded
-    crowdedEvents = getCrowdedEvents(p, ef)
+    crowdedEvents = getCrowdedEvents(p)
         
     # Get the events currently stored by this app
     myEvents = getLocalEvents(p, evCollHandle)
@@ -311,29 +311,36 @@ def main(configFile=None):
     
     # Expire old events from db, so that the new stream reflects the correct interest  
     for oldEvent in oldEvents:
+        print oldEvent
+        logging.debug('Expiring Old Event in DB: %s' %(oldEvent))
         res = expireOldEvent(evCollHandle, oldEvent)
         
     # Create new item in the db
     for newEvent in newEvents:
+        logging.debug('Creating New Event in DB: %s' %(newEvent))
         res = createLocalEvent(evCollHandle, newEvent)
     
     # Get the old process ID and kill it off
     pid = getPid(mgmtCollHandle)
-    print 'Current PID: %s' %pid
-    if pid:
-        "Killing old processID"
-        res = killOldProcess(pid)
+    logging.debug('Current PID: %s' %(pid))
+
+    # Only continue if there is a change in the events    
+    if len(oldEvents) > 0 or len(newEvents) > 0:
+        
+        if pid:
+            logging.debug('Killing old process with ID: %s' %(pid))
+            res = killOldProcess(pid)
     
-    # Now create the new one
-    newPid = processNewEvent(p)
-    print "New PID: %s" %newPid
-    
-    # Update the current process id in mongo
-    res = storePid(mgmtCollHandle, newPid)
+        # Now create the new one
+        newPid = processNewEvent(p)
+        logging.debug('Creating a new process with PID: %s' %(newPid))
+        
+        # Update the current process id in mongo
+        res = storePid(mgmtCollHandle, newPid)
+        logging.debug('Stored the new PID: %s' %(res))
         
     mdb.close(c, dbh)
-    ef.close()
-    
+    logging.shutdown()
     
 if __name__ == "__main__":
 

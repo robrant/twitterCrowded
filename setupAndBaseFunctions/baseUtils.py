@@ -3,10 +3,7 @@ import mdb
 import ConfigParser
 import json
 import subprocess
-
-# Get the directory in which this was executed (current working dir)
-cwd = os.getcwd()
-wsDir = os.path.dirname(cwd)
+import logging
 
 #----------------------------------------------------------------------------------------
 
@@ -28,15 +25,17 @@ class getConfigParameters():
         config = ConfigParser.ConfigParser()
         try:
             config.read(filePath)
-        except Exception, e:
-            print "Failed to read the config file for twitter connection client."
-            print e
+        except:
+            logging.warning('Failed to read config file.')
         
         # Keep the location of the config file in the config file for mods on the fly
         self.configFile = filePath
+        cwd = os.path.dirname(filePath)
+        parent = os.path.dirname(cwd)
         
         self.source = config.get("default", "dataSource")
-        
+        self.python = config.get("default", "python")
+
         # Mongo parameters
         self.dbHost     = config.get("backend", "host")
         self.dbPort     = config.getint("backend", "port")
@@ -68,15 +67,26 @@ class getConfigParameters():
         self.crowdedEventsUrl = config.get("web", "eventList")
         
         # Error Logging
-        self.verbose   = config.getboolean("error", "verbose")
-        self.writeOut  = config.getboolean("error", "write_out") 
+        self.logLevel  = self.checkLogLevel(config.get("error", "loglevel"))
         errorPath      = config.get("error", "err_path")   
-        self.errorPath = os.path.join(wsDir, errorPath)
+        self.errorPath = os.path.join(parent, errorPath)
         self.errorFile = config.get("error", "err_file")
+        self.connErrorFile = config.get("error", "conn_err_file")
+        self.redisConsumerLog = config.get("error", "redis_err_file")
 
-        self.python = getPython() 
+        #self.python = getPython()
 
+
+    def checkLogLevel(self, logLevel):
+        ''' Checks that the log level is correct or defaults to DEBUG.'''
         
+        logLevel = logLevel.upper()
+        if logLevel in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+            level = getattr(logging, logLevel)
+        else:
+            level = 10
+        return level
+    
 #----------------------------------------------------------------------------------------
 
 def getMongoHandles(p):
@@ -88,29 +98,14 @@ def getMongoHandles(p):
     # Authentication
     try:
         auth = dbh.authenticate(p.dbUser, p.dbPassword)
-    except Exception, e:
-        print "Failed to authenticate with mongo db."
-        print e
+    except:
+        logging.warning("Failed to authenticate with mongo db.")
 
     collHandle = dbh[p.slangCollection]
     emoCollHandle = dbh[p.emoCollection]
     
     return c, dbh, collHandle, emoCollHandle
 
-#-------------------------------------------------------------------------------------
-
-def handleErrors(p, error):
-    ''' Handles the printing (or other) of errors. '''
-
-    # Report out the parsing errors if verbose is set
-    if p.verbose == True:
-        print "-"*10+"Error"+"-"*10
-        print error
-
-    if p.writeOut == True:
-        f = open(os.path.join(p.errorPath, p.errorFile), 'a')
-        f.write(str(error)+'\n')
-        f.close()
 #----------------------------------------------------------------------------------------
 
 def decodeEncode(token, encoding='latin-1'):

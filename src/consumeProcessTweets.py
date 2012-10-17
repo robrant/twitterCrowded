@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-
+import logging
 #============================================================================================
 # TO ENSURE ALL OF THE FILES CAN SEE ONE ANOTHER.
 
@@ -20,7 +20,6 @@ for root, subFolders, files in os.walk(wsDir):
 
 #============================================================================================
 from redisQueue import RedisQueue
-
 import connectionFunctions as cf
 from baseUtils import getConfigParameters
 import mdb
@@ -43,15 +42,16 @@ def dispatchTweet(p, tweet, objectId):
             tweet = json.dumps(mediaOut, ensure_ascii=True)
             success = 1
             #tFile.write("4. Media Event Making it Through"+"\n")
-        except Exception, e:
+        except:
+            logging.error('Failed to dump out the tweet to string.', exc_info=True)
             success = None 
     
         try:
             success = cf.postTweet(p, tweet)
             success = 1
             #tFile.write("5. Media Event Being Posted: %s\n" %success)
-        except Exception, e:
-            print e
+        except:
+            logging.error('Failed to POST the tweet.', exc_info=True)
             success = None
             #tFile.write("5. Media Failed POST\n")
     else:
@@ -68,8 +68,8 @@ def main(p):
         c, dbh = mdb.getHandle(host=p.dbHost, port=p.dbPort, db=p.db, user=p.dbUser, password=p.dbPassword)
         evCollHandle = dbh[p.eventsCollection]    
     except:
-        print "Failed to connect to mongo."
-        sys.exit(1)
+        logging.critical('Failed to connect and authenticate', exc_info=True)
+        sys.exit()
 
     # Get the current tags 
     tags = cf.getCurrentTags(evCollHandle)
@@ -83,7 +83,7 @@ def main(p):
         try:
             q = RedisQueue(p.redisName, host=p.redisHost, password=p.redisPassword, port=p.redisPort, db=0)
         except:
-            print "REDIS: Failed to connect in connectionClient.py. "
+            logging.error('Failed to connect to REDIS db.', exc_info=True)
             sys.exit()
         
         # This call is blocking, so expect it to hang on this point
@@ -95,12 +95,14 @@ def main(p):
             tweetTags = cf.whichTags(tags, tweet)
             for tweetTag in tweetTags:
                 success = dispatchTweet(p, tweet, tweetTag)
-                print 'tag success:', success
+                logging.debug("Tag-based message dispatched: %s" %(success))
+        
         if queryBBoxes:
             tweetGeos = cf.matchesCurrentGeos(queryBBoxes, tweet)
             for tweetGeo in tweetGeos:
                 success = dispatchTweet(p, tweet, tweetGeo)
-                print 'geo success:', success
+                logging.debug("Geo-based message dispatched: %s" %(success))
+                
 #--------------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -114,5 +116,9 @@ if __name__ == "__main__":
     else:
         # Get the config information into a single object
         p = getConfigParameters(configFile)
+
+    # Logging config
+    logFile = os.path.join(p.errorPath, p.redisConsumerLog)
+    logging.basicConfig(filename=logFile, format='%(levelname)s:: \t%(asctime)s %(message)s', level=p.logLevel)
     
     main(p)

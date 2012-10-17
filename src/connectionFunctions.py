@@ -3,6 +3,7 @@ import sys
 import datetime
 import json
 import urllib2
+import logging
 #============================================================================================
 # TO ENSURE ALL OF THE FILES CAN SEE ONE ANOTHER.
 
@@ -33,9 +34,8 @@ def getDatetime(tweet):
     try:
         timeStamp = tweet['created_at']
         ts = datetime.datetime.strptime(timeStamp, '%a %b %d %H:%M:%S +0000 %Y')
-    except Exception, e:
-        print "Failed to parse 'created_at' into datetime object."
-        print e
+    except:
+        logging.error("Failed to parse 'created_at' into datetime object: %s" %(tweet['created_at']), exc_info=True)
         ts = datetime.datetime.utcnow()
 
     if ts:
@@ -89,6 +89,7 @@ def processMedia(objectId, tweet):
     try:
         entities = tweet['entities']
     except:
+        logging.error("Failed to get entities field from tweet. Tweet: \n%s" %(tweet), exc_info=True)
         return None
     
     #Get the media
@@ -102,6 +103,7 @@ def processMedia(objectId, tweet):
     try:
         caption = decodeEncode(tweet['text'])
     except:
+        logging.debug("Failed to parse caption: %s" %(tweet['text']), exc_info=True)
         caption = '***caption not parsed***'
     
     # Get the datetime out as ISO
@@ -126,18 +128,14 @@ def processMedia(objectId, tweet):
 def postTweet(p, mediaTweet):
     ''' POST the media json object to the URL.'''
     
-    errors = []
-
     try:
         req = urllib2.Request(p.POSTurl, mediaTweet, {'Content-Type': 'application/json'})
         f = urllib2.urlopen(req)
         response = f.read()
     except:
-        errors.append('Failed to POST json content to URL.')
+        response = 0
+        logging.error('Failed to POST json content to URL.', exc_info=True)
 
-    if len(errors) > 1:
-        return errors
-    else:
         return response
 
 #------------------------------------------------------------------------------------------ 
@@ -182,7 +180,8 @@ def getCurrentBBoxes(evCollHandle):
     res = evCollHandle.find(query, fields)
     if res:
         for r in res:
-            coords = formatBBoxForTweetStream(r)
+            coord = r['bbox']
+            coords = formatBBoxForTweetStream(coord)
             results += coords
     
     if len(results) == 0:
@@ -231,19 +230,17 @@ def matchesCurrentGeos(queryBBoxes, tweet):
     
     results = []
     
-    try:
-        coords = tweet['coordinates']['coordinates']
-        lon, lat = coords
-    except KeyError:
-        return None
-    
-    # Loop the current query boxes:
-    for bbox in queryBBoxes.keys():
-        if lat < queryBBoxes[bbox]['n'] and lat > queryBBoxes[bbox]['s']:
-            if lon < queryBBoxes[bbox]['e'] and lon > queryBBoxes[bbox]['w']:
-                results.append(bbox)
-    
+    if tweet.has_key('coordinates'):
+        try:
+            coords = tweet['coordinates']['coordinates']
+            lon, lat = coords
+        except:
+            return results
+        
+            # Loop the current query boxes:
+        for bbox in queryBBoxes.keys():
+            if lat < queryBBoxes[bbox]['n'] and lat > queryBBoxes[bbox]['s']:
+                if lon < queryBBoxes[bbox]['e'] and lon > queryBBoxes[bbox]['w']:
+                    results.append(bbox)
     return results
-
-
 

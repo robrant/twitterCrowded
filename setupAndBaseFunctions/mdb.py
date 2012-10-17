@@ -10,8 +10,9 @@ def getHandle(host='localhost', port=27017, db='bam', user=None, password=None):
     # Establish the connection
     try:
         c = Connection(host=host, port=port)
+        
     except ConnectionFailure, e:
-        sys.stderr.write("Could not connect to Mongodb: %s " % e)
+        logging.error('Failed to authenticate mongodb connection.')
         sys.exit(1)
     
     # Get a database handle
@@ -21,8 +22,8 @@ def getHandle(host='localhost', port=27017, db='bam', user=None, password=None):
     if user and password: 
         try:
             auth = dbh.authenticate(user, password)
-        except Exception, e:
-            sys.stderr.write("**** Failed to authenticate with mongo db. %s **** \n" % e)
+        except:
+            logging.error('Failed to authenticate mongodb connection.')
 
     return c, dbh
 
